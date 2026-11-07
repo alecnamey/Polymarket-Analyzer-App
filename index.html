@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Polymarket Overlap Analyzer</title>
+  <meta name="description" content="Find markets where top Polymarket traders currently hold positions together.">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    try {
+      const t = localStorage.getItem("pm-theme");
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icon.png" alt="" width="36" height="36">
+      <div>
+        <h1>Polymarket Position Overlap Analyzer</h1>
+        <p class="disclaimer" id="disclaimer"></p>
+        <p class="unofficial">Unofficial community tool — not affiliated with or endorsed by Polymarket.</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn btn-ghost" id="download-link" href="https://github.com/alecnamey/Polymarket-Analyzer-App/releases/latest" target="_blank" rel="noopener">
+        Desktop app<span id="latest-version"></span>
+      </a>
+      <button class="btn btn-ghost" id="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel controls">
+      <div class="control-row">
+        <span class="label">Overlap filter</span>
+        <div class="segmented" role="group" aria-label="Overlap filter">
+          <button type="button" data-mode="all" class="seg">All positions</button>
+          <button type="button" data-mode="same" class="seg">Same outcome</button>
+        </div>
+      </div>
+
+      <div class="control-block">
+        <div class="label-row">
+          <span class="label">Parameters</span>
+          <button class="help" id="help-btn" type="button" aria-label="Parameter guide">?</button>
+        </div>
+        <div class="params" id="params"></div>
+      </div>
+
+      <div class="control-block">
+        <span class="label">Category filter</span>
+        <div class="chips" id="chips-general"></div>
+        <div class="chips" id="chips-sports"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-run" id="run-btn" type="button">▶&nbsp; Run analysis</button>
+        <button class="btn btn-stop" id="stop-btn" type="button" disabled>■&nbsp; Stop</button>
+        <button class="btn" id="clear-btn" type="button">Clear</button>
+        <button class="btn" id="export-btn" type="button">Export results</button>
+      </div>
+    </section>
+
+    <section class="status-bar" id="status-bar" hidden>
+      <div class="progress"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="status-text"><span id="status-text">Ready</span><span id="status-detail"></span></div>
+    </section>
+
+    <section class="panel output">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="results" type="button">Results <span class="count" id="results-count"></span></button>
+        <button class="tab" role="tab" data-tab="log" type="button">Log</button>
+      </div>
+      <div class="tab-panel" id="tab-results">
+        <div class="empty" id="results-empty">
+          <p>Run the analysis to find markets where top traders currently overlap.</p>
+          <p class="dim">A full run checks every leaderboard trader's activity and open positions, which takes a minute or two at the default settings.</p>
+        </div>
+        <div id="traders-section" hidden>
+          <h2>Qualifying traders</h2>
+          <div class="table-wrap"><table class="traders" id="traders-table"></table></div>
+        </div>
+        <div id="markets-section" hidden>
+          <h2 id="markets-heading">Overlapping markets</h2>
+          <div class="markets" id="markets"></div>
+        </div>
+      </div>
+      <div class="tab-panel" id="tab-log" hidden>
+        <pre class="log" id="log"></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer" id="footer"></footer>
+
+  <dialog class="guide" id="guide">
+    <div class="guide-head">
+      <h2>Parameter guide</h2>
+      <button class="btn btn-ghost" type="button" id="guide-close">Close</button>
+    </div>
+    <div class="guide-body">
+      <h3>How the analysis works</h3>
+      <p>The analyzer pulls the top traders from Polymarket's monthly P&amp;L leaderboard, filters them to only the most active traders with the most open positions, then finds markets where multiple of those traders hold positions at the same time.</p>
+      <p class="pipeline">Leaderboard → Activity filter → Position filter → Top N → Overlap analysis</p>
+
+      <h4>Leaderboard Size</h4>
+      <p class="range">Range: 1 – 500 &nbsp;|&nbsp; Default: 100</p>
+      <p>How many traders to pull from the top of the monthly P&amp;L leaderboard before any filtering begins.</p>
+      <p class="dim">Larger values cast a wider net and may surface more overlapping markets, but take longer — each trader requires separate API calls for activity and positions. The API returns 50 traders per page, so values above 50 trigger multiple requests automatically.</p>
+
+      <h4>Min Trades / Day</h4>
+      <p class="range">Range: 0 – 1000 &nbsp;|&nbsp; Default: 10</p>
+      <p>Minimum average daily trades a trader must have made over the Activity Window to qualify for the analysis.</p>
+      <p class="dim">This filters out traders who appear on the leaderboard from a single lucky position rather than consistent active trading. Setting this to 0 disables the activity filter entirely.</p>
+
+      <h4>Activity Window</h4>
+      <p class="range">Range: 1 – 365 days &nbsp;|&nbsp; Default: 30</p>
+      <p>How many days back to measure each trader's trading activity.</p>
+      <p class="dim">The total trade count over this window is divided by the number of days to produce the trades-per-day figure. Shorter windows capture recent momentum; longer windows reward sustained consistency.</p>
+
+      <h4>Min Active Positions</h4>
+      <p class="range">Range: 0 – 1000 &nbsp;|&nbsp; Default: 30</p>
+      <p>Minimum number of currently open positions a trader must hold to qualify.</p>
+      <p class="dim">Traders with very few open positions rarely produce meaningful overlaps. Higher values focus on traders broadly exposed across many markets. Setting this to 0 disables the position-count filter.</p>
+
+      <h4>Traders to Analyze</h4>
+      <p class="range">Range: 1 – 200 &nbsp;|&nbsp; Default: 10</p>
+      <p>How many traders to include in the final overlap analysis, taken from the qualifying pool sorted by monthly P&amp;L (highest first).</p>
+      <p class="dim">More traders means more potential overlaps but also more noise. 10–20 is a good starting point. If fewer traders pass the filters than this number, all qualifying traders are used.</p>
+
+      <h3>Overlap filter</h3>
+      <p><strong>All positions</strong> — shows every market where 2 or more of the selected traders hold any position, regardless of which outcome they chose. This includes markets where traders are on opposing sides.</p>
+      <p class="dim"><strong>Same outcome</strong> — only shows markets where every overlapping trader is on the same side. This is the strongest signal: multiple independent top traders independently arrived at the same directional bet.</p>
+    </div>
+  </dialog>
+
+  <script src="data.js"></script>
+  <script src="analyzer.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
